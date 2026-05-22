@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>CONNECT</title>
+  <style>
+    :root {
+      --bg: #06070a;
+      --text: #f4f7fb;
+      --muted: #a7b2c8;
+      --grid-fill: rgba(18, 24, 37, 0.9);
+      --grid-line: rgba(173, 188, 255, 0.17);
+      --grid-edge: rgba(173, 188, 255, 0.34);
+      /* cell must fit 8 cols inside (100vw - 32px body padding - 24px board padding) */
+      --cell-size: min(calc((100vw - 56px) / 8), 82px);
+      --board-cols: 8;
+      --board-rows: 8;
+      --dot-size: calc(var(--cell-size) * 0.58);
+      --shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top, rgba(91, 124, 255, 0.22), transparent 28%),
+        radial-gradient(circle at 20% 80%, rgba(124, 247, 212, 0.12), transparent 24%),
+        radial-gradient(circle at 80% 20%, rgba(246, 184, 108, 0.12), transparent 22%),
+        linear-gradient(160deg, #05060a 0%, #090b12 45%, #05060a 100%);
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      padding: max(env(safe-area-inset-top, 0px), 18px) 16px max(env(safe-area-inset-bottom, 0px), 32px);
+      overflow-x: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      pointer-events: none;
+      filter: blur(55px);
+      opacity: 0.45;
+      z-index: 0;
+    }
+
+    body::before {
+      width: 18rem;
+      height: 18rem;
+      top: 4%;
+      left: 8%;
+      background: rgba(91, 124, 255, 0.18);
+    }
+
+    body::after {
+      width: 20rem;
+      height: 20rem;
+      right: 8%;
+      bottom: 8%;
+      background: rgba(124, 247, 212, 0.14);
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      width: min(860px, 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      animation: rise 700ms ease-out both;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2.8rem, 7vw, 4.9rem);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-weight: 800;
+      background: linear-gradient(135deg, #ffffff 0%, #dce6ff 40%, #7cf7d4 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: 0 0 28px rgba(124, 247, 212, 0.12);
+    }
+
+    .note {
+      margin: -4px 0 8px;
+      color: var(--muted);
+      font-size: 0.98rem;
+      letter-spacing: 0.02em;
+      text-align: center;
+    }
+
+    .board-shell {
+      position: relative;
+      /* exactly fits the board grid + its own padding */
+      width: calc(var(--cell-size) * var(--board-cols) + 24px);
+      max-width: 100%;
+      padding: 12px;
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+      border: 1px solid rgba(152, 173, 255, 0.14);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    .board {
+      position: relative;
+      width: calc(var(--cell-size) * var(--board-cols));
+      height: calc(var(--cell-size) * var(--board-rows));
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .grid-layer {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-columns: repeat(var(--board-cols), var(--cell-size));
+      grid-template-rows: repeat(var(--board-rows), var(--cell-size));
+    }
+
+    .cell {
+      width: var(--cell-size);
+      height: var(--cell-size);
+      background: var(--grid-fill);
+      border-right: 1px solid var(--grid-line);
+      border-bottom: 1px solid var(--grid-line);
+      transition: background 180ms ease;
+    }
+
+    .cell.edge-top {
+      border-top: 1px solid var(--grid-line);
+    }
+
+    .cell.edge-left {
+      border-left: 1px solid var(--grid-line);
+    }
+
+    .cell.playable:hover {
+      background: rgba(23, 31, 49, 0.96);
+    }
+
+    .cell.blocked {
+      background: transparent;
+      border-color: transparent;
+    }
+
+    .board-svg,
+    .dots-layer,
+    .win-layer {
+      position: absolute;
+      inset: 0;
+    }
+
+    .board-svg {
+      overflow: visible;
+      pointer-events: auto;
+      z-index: 2;
+    }
+
+    .dots-layer {
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .win-layer {
+      z-index: 4;
+      display: grid;
+      place-items: center;
+      border-radius: 22px;
+      background: rgba(5, 8, 16, 0.78);
+      backdrop-filter: blur(12px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease;
+    }
+
+    .win-layer.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .win-card {
+      position: relative;
+      z-index: 1;
+      padding: 28px 34px;
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.11), rgba(255,255,255,0.04));
+      border: 1px solid rgba(152, 173, 255, 0.2);
+      text-align: center;
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38);
+      animation: celebrateCard 420ms ease-out both;
+    }
+
+    .win-card h2 {
+      margin: 0 0 10px;
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #ffffff;
+      text-shadow: 0 0 24px rgba(124, 247, 212, 0.25);
+    }
+
+    .win-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    .confetti-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .path-group {
+      filter: drop-shadow(0 0 12px rgba(255,255,255,0.1));
+    }
+
+    .path-group.active {
+      filter: drop-shadow(0 0 18px rgba(255,255,255,0.18));
+    }
+
+    .path-stroke {
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 14;
+      opacity: 0.94;
+      pointer-events: none;
+    }
+
+    .path-hit {
+      fill: none;
+      stroke: transparent;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 28;
+      pointer-events: stroke;
+      cursor: pointer;
+    }
+
+    .dot {
+      position: absolute;
+      width: var(--dot-size);
+      height: var(--dot-size);
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(0.96rem, 2.6vw, 1.15rem);
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+      color: #0b1020;
+      border: 2px solid rgba(255, 255, 255, 0.7);
+      padding: 0;
+      text-align: center;
+      line-height: 1;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255,255,255,0.08);
+      transform: translate(-50%, -50%) scale(1);
+      transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+      cursor: grab;
+      pointer-events: auto;
+      touch-action: none;
+      -webkit-user-select: none;
+    }
+
+    .dot:hover,
+    .dot.active,
+    .dot.connected {
+      transform: translate(-50%, -50%) scale(1.08);
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45), 0 0 22px rgba(255,255,255,0.16);
+      filter: saturate(1.08);
+    }
+
+    .dot.connected {
+      outline: 2px solid rgba(255, 255, 255, 0.35);
+      outline-offset: 2px;
+    }
+
+    .dot.pass-through {
+      outline: 3px solid rgba(255, 255, 255, 0.5);
+      outline-offset: 4px;
+      outline-style: dashed;
+    }
+
+    .dot:active {
+      cursor: grabbing;
+    }
+
+    .legend {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 0.94rem;
+      text-align: center;
+    }
+
+
+    .stats-row {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+      margin-top: 2px;
+    }
+
+    .timer-pill {
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(152, 173, 255, 0.16);
+      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+      color: var(--muted);
+      font-size: 0.95rem;
+      letter-spacing: 0.04em;
+    }
+
+    .timer-pill span {
+      color: var(--text);
+      font-weight: 700;
+      margin-left: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 4px;
+    }
+
+    .result-controls {
+      display: none;
+    }
+
+    .control-button {
+      appearance: none;
+      -webkit-appearance: none;
+      border: 1px solid rgba(152, 173, 255, 0.18);
+      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+      color: var(--text);
+      border-radius: 999px;
+      padding: 11px 16px;
+      font: inherit;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+      min-height: 44px;
+      touch-action: manipulation;
+    }
+
+    .control-button:hover {
+      transform: translateY(-1px);
+      background: linear-gradient(180deg, rgba(255,255,255,0.1), rgba(255,255,255,0.04));
+      border-color: rgba(124, 247, 212, 0.35);
+    }
+
+    .control-button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .instructions-layer {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(4, 7, 14, 0.82);
+      backdrop-filter: blur(14px);
+      z-index: 8;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+
+    .instructions-layer.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .instructions-card {
+      width: min(520px, 100%);
+      padding: 30px 28px;
+      border-radius: 28px;
+      border: 1px solid rgba(152, 173, 255, 0.16);
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+      box-shadow: 0 20px 56px rgba(0, 0, 0, 0.38);
+      text-align: center;
+    }
+
+    .instructions-card h2 {
+      margin: 0 0 14px;
+      font-size: clamp(1.7rem, 4vw, 2.4rem);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .instructions-card p {
+      margin: 0 0 10px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .win-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .win-share.copied {
+      border-color: rgba(124, 247, 212, 0.5);
+      background: linear-gradient(180deg, rgba(124,247,212,0.18), rgba(124,247,212,0.08));
+      color: #ffffff;
+    }
+
+    @keyframes celebrateCard {
+      from {
+        opacity: 0;
+        transform: scale(0.92) translateY(16px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.985);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    /* ── Mobile: ensure board fits with less padding ── */
+    @media (max-width: 520px) {
+      :root {
+        /* 8 cols inside (100vw - 20px body padding - 16px board padding) */
+        --cell-size: calc((100vw - 36px) / 8);
+      }
+
+      body {
+        padding: max(env(safe-area-inset-top, 0px), 12px) 10px max(env(safe-area-inset-bottom, 0px), 20px);
+      }
+
+      .page { gap: 10px; }
+
+      .board-shell {
+        width: calc(var(--cell-size) * var(--board-cols) + 16px);
+        padding: 8px;
+        border-radius: 18px;
+      }
+
+      .stats-row { width: 100%; }
+
+      .timer-pill {
+        width: 100%;
+        text-align: center;
+      }
+
+      .controls {
+        width: 100%;
+        gap: 8px;
+      }
+
+      .control-button {
+        flex: 1 1 130px;
+        padding: 12px 10px;
+        font-size: 0.88rem;
+      }
+
+      .note, .legend { font-size: 0.85rem; }
+      .win-card p, .instructions-card p { font-size: 0.88rem; }
+
+      .win-card {
+        padding: 20px 18px;
+      }
+
+      .instructions-card {
+        padding: 22px 18px;
+      }
+
+      .path-stroke { stroke-width: 11; }
+      .path-hit    { stroke-width: 22; }
+    }
+
+    /* ── Very small phones (SE, Galaxy A series) ── */
+    @media (max-width: 360px) {
+      :root {
+        --cell-size: calc((100vw - 28px) / 8);
+      }
+      body {
+        padding: max(env(safe-area-inset-top, 0px), 8px) 8px max(env(safe-area-inset-bottom, 0px), 12px);
+      }
+      .board-shell {
+        width: calc(var(--cell-size) * var(--board-cols) + 12px);
+        padding: 6px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>CONNECT</h1>
+    <p class="note">May 20, 2026</p>
+
+    <section class="board-shell">
+      <div class="board" id="board" aria-label="Connect game board">
+        <div class="grid-layer" id="grid"></div>
+        <svg class="board-svg" id="paths" aria-hidden="true"></svg>
+        <div class="dots-layer" id="dots"></div>
+        <div class="win-layer" id="winLayer">
+          <canvas class="confetti-canvas" id="confettiCanvas"></canvas>
+          <div class="win-card">
+            <h2>You Win</h2>
+            <p id="winMessage">Every pair is connected and the full board is filled.</p>
+            <div class="win-actions"><button class="control-button" id="seePuzzleButton" type="button">See Puzzle</button><button class="control-button win-share" id="winShareButton" type="button">Copy Result</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="instructions-layer" id="instructionsLayer">
+      <div class="instructions-card">
+        <h2>How To Play</h2>
+        <p>Drag from any numbered circle to build a path.</p>
+        <p>Connect each number to its matching partner.</p>
+        <p>Some numbers have a circled dot that must be passed through on the path.</p>
+        <p>Paths cannot cross, and the board is only solved when every square is filled.</p>
+        <button class="control-button" id="startGameButton" type="button">Start Puzzle</button>
+      </div>
+    </div>
+
+    <div class="stats-row"><div class="timer-pill">Time <span id="timerText">0:00</span></div></div>
+    <div class="controls" id="controlsRow"><button class="control-button" id="howToButton" type="button">How To Play</button><button class="control-button" id="eraseButton" type="button">Erase Board</button></div>
+    <div class="controls result-controls" id="resultControlsRow"><button class="control-button" id="shareResultsButton" type="button">Share Results</button></div>
+    <p class="legend" id="statusText">Connect matching numbers to fill the full board without crossing paths.</p>
+  </main>
+
+  <script>
+    const board = document.getElementById("board");
+    const grid = document.getElementById("grid");
+    const svg = document.getElementById("paths");
+    const dotsLayer = document.getElementById("dots");
+    const winLayer = document.getElementById("winLayer");
+    const instructionsLayer = document.getElementById("instructionsLayer");
+    const startGameButton = document.getElementById("startGameButton");
+    const howToButton = document.getElementById("howToButton");
+    const eraseButton = document.getElementById("eraseButton");
+    const controlsRow = document.getElementById("controlsRow");
+    const resultControlsRow = document.getElementById("resultControlsRow");
+    const seePuzzleButton = document.getElementById("seePuzzleButton");
+    const shareResultsButton = document.getElementById("shareResultsButton");
+    const winShareButton = document.getElementById("winShareButton");
+    const statusText = document.getElementById("statusText");
+    const winMessage = document.getElementById("winMessage");
+    const timerText = document.getElementById("timerText");
+    const confettiCanvas = document.getElementById("confettiCanvas");
+    const rows = 8;
+    const cols = 8;
+    const puzzleDate = "2026-05-21";
+    const puzzleVersion = "2026-05-21-a";
+    const resultStorageKey = `connect-result-${puzzleVersion}`;
+
+    // New puzzle shape — 8x8 grid with central void
+    // Central void at (3,3), (3,4), (4,3), (4,4)
+    const shape = [
+      [0,0],[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],
+      [1,0],[1,1],[1,2],[1,3],[1,4],[1,5],[1,6],[1,7],
+      [2,0],[2,1],[2,3],[2,6],[2,7],
+      [3,0],[3,1],[3,3],[3,4],[3,6],[3,7],
+      [4,0],[4,1],[4,4],[4,5],[4,6],[4,7],
+      [5,0],[5,1],[5,5],[5,6],[5,7],
+      [6,0],[6,1],[6,2],[6,3],[6,4],[6,5],[6,6],[6,7],
+      [7,0],[7,1],[7,2],[7,3],[7,4],[7,5],[7,6],[7,7]
+    ];
+
+    const palette = {
+      2: { dot: "#8cb4ff", line: "#8cb4ff" },
+      3: { dot: "#f6b86c", line: "#f6b86c" },
+      4: { dot: "#f97fa8", line: "#f97fa8" },
+      5: { dot: "#c084fc", line: "#c084fc" },
+      6: { dot: "#7cf7d4", line: "#7cf7d4" },
+    };
+
+    const playable = new Set(shape.map(([row, col]) => `${row},${col}`));
+    const dotsById = new Map();
+    const dotByCell = new Map();
+    const pairDots = new Map();
+    const linesByLabel = new Map();
+    let dotsData = [];
+    let activeLine = null;
+    let puzzleStartedAt = null;
+    let finishedAt = null;
+    let timerIntervalId = null;
+    let confettiAnimationId = null;
+    let lockedResultView = false;
+    let copyButtonResetId = null;
+    let showingCompletedBoard = false;
+
+    function shuffle(items) {
+      const copy = [...items];
+      for (let i = copy.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    function buildBoard() {
+      for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < cols; col += 1) {
+          const cell = document.createElement("div");
+          const key = `${row},${col}`;
+          if (!playable.has(key)) {
+            cell.className = "cell blocked";
+          } else {
+            cell.className = "cell playable";
+            // Show top border if cell above is not playable
+            if (!playable.has(`${row - 1},${col}`)) cell.classList.add("edge-top");
+            // Show left border if cell to left is not playable
+            if (!playable.has(`${row},${col - 1}`)) cell.classList.add("edge-left");
+            // Show bottom border if cell below is not playable
+            if (!playable.has(`${row + 1},${col}`)) cell.style.borderBottom = "1px solid var(--grid-edge)";
+            // Show right border if cell to right is not playable
+            if (!playable.has(`${row},${col + 1}`)) cell.style.borderRight = "1px solid var(--grid-edge)";
+          }
+          grid.appendChild(cell);
+        }
+      }
+    }
+
+    function createDots() {
+      dotsData = [
+        // Pair 2 (blue): two endpoints + pass-through
+        { id: 'dot-0', label: 2, row: 2, col: 6, key: '2,6' },
+        { id: 'dot-1', label: 2, row: 3, col: 4, key: '3,4', isPassThrough: true },
+        { id: 'dot-2', label: 2, row: 3, col: 6, key: '3,6' },
+        // Pair 3 (orange): top center, bottom left
+        { id: 'dot-3', label: 3, row: 0, col: 3, key: '0,3' },
+        { id: 'dot-4', label: 3, row: 7, col: 0, key: '7,0' },
+        // Pair 4 (pink): left-middle, bottom-middle
+        { id: 'dot-5', label: 4, row: 2, col: 1, key: '2,1' },
+        { id: 'dot-6', label: 4, row: 7, col: 2, key: '7,2' },
+        // Pair 5 (purple): top-right, middle-right
+        { id: 'dot-7', label: 5, row: 0, col: 4, key: '0,4' },
+        { id: 'dot-8', label: 5, row: 5, col: 5, key: '5,5' },
+        // Pair 6 (teal): middle-left, bottom-right
+        { id: 'dot-9', label: 6, row: 6, col: 2, key: '6,2' },
+        { id: 'dot-10', label: 6, row: 7, col: 7, key: '7,7' },
+      ];
+
+      dotsById.clear();
+      dotByCell.clear();
+      pairDots.clear();
+
+      dotsData.forEach((dot) => {
+        dotsById.set(dot.id, dot);
+        dotByCell.set(dot.key, dot);
+        const pair = pairDots.get(dot.label) || [];
+        pair.push(dot);
+        pairDots.set(dot.label, pair);
+      });
+    }
+
+    function getCellSize() {
+      // Measure from the board element directly — reliable across all screen sizes
+      return board.getBoundingClientRect().width / cols;
+    }
+
+    function getCellCenter(row, col) {
+      const size = getCellSize();
+      return {
+        x: col * size + size / 2,
+        y: row * size + size / 2
+      };
+    }
+
+    function hexToRgba(hex, alpha) {
+      const value = hex.replace('#', '');
+      const r = parseInt(value.slice(0, 2), 16);
+      const g = parseInt(value.slice(2, 4), 16);
+      const b = parseInt(value.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function formatElapsed(ms) {
+      const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${minutes}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    function getCompletedElapsedMs() {
+      if (finishedAt === null || puzzleStartedAt === null) return null;
+      return finishedAt - puzzleStartedAt;
+    }
+
+    function serializeCompletedLines() {
+      return Array.from(linesByLabel.entries()).map(([label, line]) => ({
+        label,
+        color: line.color,
+        completed: line.completed,
+        startDotId: line.startDotId,
+        cells: line.cells.map((cell) => ({ row: cell.row, col: cell.col, key: cell.key }))
+      }));
+    }
+
+    function saveCompletedResult(elapsedMs) {
+      try {
+        localStorage.setItem(resultStorageKey, JSON.stringify({
+          puzzleDate,
+          elapsedMs,
+          completedAt: Date.now(),
+          lines: serializeCompletedLines()
+        }));
+      } catch (error) {
+        // Ignore local storage failures and keep the local experience working.
+      }
+    }
+
+    function loadCompletedResult() {
+      try {
+        const raw = localStorage.getItem(resultStorageKey);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed.elapsedMs !== 'number') return null;
+        return parsed;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function restoreCompletedLines(serializedLines) {
+      linesByLabel.clear();
+      svg.innerHTML = '';
+      if (!Array.isArray(serializedLines)) return;
+      serializedLines.forEach((line) => {
+        linesByLabel.set(line.label, {
+          label: line.label,
+          color: line.color || palette[line.label].line,
+          startDotId: line.startDotId,
+          cells: line.cells || [],
+          points: [],
+          completed: Boolean(line.completed)
+        });
+      });
+      refreshLayout();
+    }
+
+    function showStoredResult(result) {
+      lockedResultView = true;
+      showingCompletedBoard = true;
+      puzzleStartedAt = 0;
+      finishedAt = result.elapsedMs;
+      stopTimerLoop();
+      timerText.textContent = formatElapsed(result.elapsedMs);
+      if (result.lines) {
+        restoreCompletedLines(result.lines);
+      }
+      statusText.textContent = `Solved in ${formatElapsed(result.elapsedMs)}.`;
+      winMessage.textContent = `You already solved this puzzle in ${formatElapsed(result.elapsedMs)}.`;
+      winLayer.classList.remove('visible');
+      winLayer.dataset.celebrated = 'true';
+      winShareButton.disabled = false;
+      winShareButton.textContent = 'Copy Result';
+      winShareButton.classList.remove('copied');
+      controlsRow.style.display = 'none';
+      resultControlsRow.style.display = '';
+      board.style.pointerEvents = 'none';
+      instructionsLayer.classList.remove('visible');
+      celebrateWithConfetti();
+    }
+
+    function ensureTimerStarted() {
+      if (!puzzleStartedAt) {
+        puzzleStartedAt = Date.now();
+        finishedAt = null;
+        startTimerLoop();
+      }
+    }
+
+    function updateTimerDisplay() {
+      if (finishedAt && puzzleStartedAt) {
+        timerText.textContent = formatElapsed(finishedAt - puzzleStartedAt);
+        return;
+      }
+      if (puzzleStartedAt) {
+        timerText.textContent = formatElapsed(Date.now() - puzzleStartedAt);
+        return;
+      }
+      timerText.textContent = '0:00';
+    }
+
+    function startTimerLoop() {
+      if (timerIntervalId) return;
+      updateTimerDisplay();
+      timerIntervalId = window.setInterval(updateTimerDisplay, 250);
+    }
+
+    function stopTimerLoop() {
+      if (!timerIntervalId) return;
+      window.clearInterval(timerIntervalId);
+      timerIntervalId = null;
+      updateTimerDisplay();
+    }
+
+    function celebrateWithConfetti() {
+      const context = confettiCanvas.getContext('2d');
+      const rect = winLayer.getBoundingClientRect();
+      const pieces = Array.from({ length: 120 }, (_, index) => ({
+        x: Math.random() * rect.width,
+        y: -20 - Math.random() * rect.height * 0.35,
+        size: 6 + Math.random() * 8,
+        color: ['#7cf7d4', '#8cb4ff', '#f6b86c', '#ff8fb1', '#d2a8ff'][index % 5],
+        vx: -1.5 + Math.random() * 3,
+        vy: 2 + Math.random() * 4,
+        spin: Math.random() * Math.PI,
+        spinRate: -0.18 + Math.random() * 0.36
+      }));
+
+      confettiCanvas.width = rect.width;
+      confettiCanvas.height = rect.height;
+
+      const start = performance.now();
+
+      function frame(now) {
+        const elapsed = now - start;
+        context.clearRect(0, 0, rect.width, rect.height);
+
+        pieces.forEach((piece) => {
+          piece.x += piece.vx;
+          piece.y += piece.vy;
+          piece.spin += piece.spinRate;
+          piece.vy += 0.03;
+
+          context.save();
+          context.translate(piece.x, piece.y);
+          context.rotate(piece.spin);
+          context.fillStyle = piece.color;
+          context.fillRect(-piece.size / 2, -piece.size / 2, piece.size, piece.size * 0.7);
+          context.restore();
+        });
+
+        if (elapsed < 2800) {
+          confettiAnimationId = requestAnimationFrame(frame);
+        } else {
+          context.clearRect(0, 0, rect.width, rect.height);
+          confettiAnimationId = null;
+        }
+      }
+
+      if (confettiAnimationId) cancelAnimationFrame(confettiAnimationId);
+      confettiAnimationId = requestAnimationFrame(frame);
+    }
+
+    function resetBoardState() {
+      if (lockedResultView) return;
+      linesByLabel.clear();
+      svg.innerHTML = '';
+      activeLine = null;
+      finishedAt = null;
+      showingCompletedBoard = false;
+      document.querySelectorAll('.dot').forEach((dot) => dot.classList.remove('active'));
+      renderDots();
+      updateWinState();
+      statusText.textContent = 'Connect matching numbers to fill the full board without crossing paths.';
+      winLayer.dataset.celebrated = '';
+      winShareButton.disabled = true;
+      winShareButton.textContent = 'Copy Result';
+      winShareButton.classList.remove('copied');
+      board.style.pointerEvents = 'auto';
+      controlsRow.style.display = '';
+      resultControlsRow.style.display = 'none';
+      updateTimerDisplay();
+    }
+
+    function getShareText() {
+      const elapsedMs = getCompletedElapsedMs();
+      if (elapsedMs === null) return null;
+      const base = 'CONNECT - May 18, 2026';
+      return `${base}
+Time: ${formatElapsed(elapsedMs)}
+Solved the May 18 puzzle.
+https://connectgame.org`;
+    }
+
+    async function copyShareText() {
+      const text = getShareText();
+      if (!text) {
+        statusText.textContent = 'Finish the puzzle to copy your result.';
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        statusText.textContent = 'Result copied to clipboard.';
+        winShareButton.textContent = 'Copied!';
+        winShareButton.classList.add('copied');
+        if (copyButtonResetId) window.clearTimeout(copyButtonResetId);
+        copyButtonResetId = window.setTimeout(() => {
+          winShareButton.textContent = 'Copy Result';
+          winShareButton.classList.remove('copied');
+        }, 1800);
+      } catch (error) {
+        statusText.textContent = 'Clipboard copy failed. Your browser may block local file clipboard access.';
+      }
+    }
+
+    function showPuzzleFromResults() {
+      winLayer.classList.remove('visible');
+      board.style.pointerEvents = 'none';
+      controlsRow.style.display = 'none';
+      resultControlsRow.style.display = '';
+      lockedResultView = true;
+      showingCompletedBoard = true;
+      statusText.textContent = finishedAt !== null && puzzleStartedAt !== null
+        ? `Solved in ${formatElapsed(getCompletedElapsedMs())}.`
+        : 'Completed puzzle view.';
+    }
+
+    function showResultsScreen() {
+      winLayer.classList.add('visible');
+      resultControlsRow.style.display = 'none';
+      controlsRow.style.display = 'none';
+      board.style.pointerEvents = 'none';
+      lockedResultView = true;
+      showingCompletedBoard = false;
+      statusText.textContent = finishedAt !== null && puzzleStartedAt !== null
+        ? `Solved in ${formatElapsed(getCompletedElapsedMs())}.`
+        : 'Result screen.';
+    }
+
+    function openInstructions() {
+      if (lockedResultView) return;
+      instructionsLayer.classList.add('visible');
+    }
+
+    function closeInstructions() {
+      instructionsLayer.classList.remove('visible');
+    }
+
+    function renderDots() {
+      dotsLayer.innerHTML = '';
+      dotsData.forEach((dotData) => {
+        const dot = document.createElement('button');
+        const center = getCellCenter(dotData.row, dotData.col);
+        const colors = palette[dotData.label];
+        const line = linesByLabel.get(dotData.label);
+        const connected = Boolean(line && line.completed);
+
+        let className = 'dot';
+        if (connected) className += ' connected';
+        if (dotData.isPassThrough) className += ' pass-through';
+        dot.className = className;
+        dot.type = 'button';
+        dot.textContent = dotData.label;
+        dot.dataset.dotId = dotData.id;
+        dot.dataset.label = dotData.label;
+        dot.style.left = `${center.x}px`;
+        dot.style.top = `${center.y}px`;
+        dot.style.background = `linear-gradient(145deg, ${colors.dot}, #ffffff)`;
+        dot.style.boxShadow = `0 10px 24px rgba(0, 0, 0, 0.34), 0 0 22px ${hexToRgba(colors.dot, 0.2)}`;
+        dot.addEventListener('pointerdown', startLineFromDot);
+        dotsLayer.appendChild(dot);
+      });
+    }
+
+    function getBoardPoint(event) {
+      const rect = board.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(event.clientX - rect.left, rect.width - 1)),
+        y: Math.max(0, Math.min(event.clientY - rect.top, rect.height - 1))
+      };
+    }
+
+    function getNearestCell(point) {
+      const size = getCellSize();
+      if (!size) return null;
+
+      const row = Math.floor(point.y / size);
+      const col = Math.floor(point.x / size);
+      const key = `${row},${col}`;
+
+      if (row < 0 || col < 0 || row >= rows || col >= cols || !playable.has(key)) {
+        return null;
+      }
+
+      return { row, col, key };
+    }
+
+    function cellsAreAdjacent(a, b) {
+      return Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
+    }
+
+    function buildPathData(points) {
+      return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+    }
+
+    function ensurePathGroup(label, color) {
+      let group = svg.querySelector(`[data-path-id="${label}"]`);
+      if (!group) {
+        group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.dataset.pathId = label;
+        group.classList.add('path-group');
+
+        const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        hit.classList.add('path-hit');
+        hit.addEventListener('pointerdown', resumeLineFromPath);
+
+        const stroke = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        stroke.classList.add('path-stroke');
+        stroke.setAttribute('stroke', color);
+
+        group.append(hit, stroke);
+        svg.appendChild(group);
+      }
+      return group;
+    }
+
+    function getOccupiedCellOwner(cellKey, ignoreLabel = null) {
+      for (const [label, line] of linesByLabel.entries()) {
+        if (label === ignoreLabel) continue;
+        if (line.cells.some((cell) => cell.key === cellKey)) return label;
+      }
+      return null;
+    }
+
+    function clearLine(label) {
+      linesByLabel.delete(label);
+      const group = svg.querySelector(`[data-path-id="${label}"]`);
+      if (group) group.remove();
+    }
+
+    function drawLine(label) {
+      const line = linesByLabel.get(label);
+      if (!line) return;
+      const group = ensurePathGroup(label, line.color);
+      group.classList.toggle('active', activeLine && activeLine.label === label);
+      const hit = group.querySelector('.path-hit');
+      const stroke = group.querySelector('.path-stroke');
+      const pathData = buildPathData(line.points);
+      hit.setAttribute('d', pathData);
+      hit.style.display = line.completed ? 'none' : 'block';
+      stroke.setAttribute('stroke', line.color);
+      stroke.setAttribute('d', pathData);
+    }
+
+    function refreshLayout() {
+      const rect = board.getBoundingClientRect();
+      svg.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
+      svg.setAttribute('width', rect.width);
+      svg.setAttribute('height', rect.height);
+
+      linesByLabel.forEach((line, label) => {
+        line.points = line.cells.map((cell) => getCellCenter(cell.row, cell.col));
+        drawLine(label);
+      });
+
+      renderDots();
+      updateWinState();
+    }
+
+    function startLineFromDot(event) {
+      if (lockedResultView) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const dotButton = event.currentTarget;
+      const dotId = dotButton.dataset.dotId;
+      const dotData = dotsById.get(dotId);
+      const label = dotData.label;
+      const color = palette[label].line;
+      const startCell = { row: dotData.row, col: dotData.col, key: dotData.key };
+      const startPoint = getCellCenter(dotData.row, dotData.col);
+
+      clearLine(label);
+      linesByLabel.set(label, {
+        label,
+        color,
+        startDotId: dotId,
+        cells: [startCell],
+        points: [startPoint],
+        completed: false
+      });
+
+      document.querySelectorAll('.dot').forEach((dot) => dot.classList.remove('active'));
+      dotButton.classList.add('active');
+
+      activeLine = { label, pointerId: event.pointerId };
+      drawLine(label);
+      // Capture on the board so pointermove coords are always board-relative
+      try { board.setPointerCapture(event.pointerId); } catch(e) {}
+      renderDots();
+      updateWinState();
+    }
+
+    function resumeLineFromPath(event) {
+      if (lockedResultView) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const group = event.currentTarget.parentElement;
+      const label = Number(group.dataset.pathId);
+      const line = linesByLabel.get(label);
+      if (!line || line.completed) return;
+
+      document.querySelectorAll('.dot').forEach((dot) => dot.classList.remove('active'));
+      const endpoint = line.cells[line.cells.length - 1];
+      const endpointDot = dotByCell.get(endpoint.key);
+      if (endpointDot) {
+        const button = dotsLayer.querySelector(`[data-dot-id="${endpointDot.id}"]`);
+        if (button) button.classList.add('active');
+      }
+
+      activeLine = { label, pointerId: event.pointerId };
+      drawLine(label);
+      try { board.setPointerCapture(event.pointerId); } catch(e) {}
+    }
+
+    function resetActiveLine() {
+      if (!activeLine) return;
+      clearLine(activeLine.label);
+      activeLine = null;
+      document.querySelectorAll('.dot').forEach((dot) => dot.classList.remove('active'));
+      renderDots();
+      updateWinState();
+    }
+
+    function finalizeActiveLine() {
+      if (!activeLine) return;
+      const label = activeLine.label;
+      const line = linesByLabel.get(label);
+      if (line) {
+        drawLine(label);
+      }
+      activeLine = null;
+      document.querySelectorAll('.dot').forEach((dot) => dot.classList.remove('active'));
+      renderDots();
+      updateWinState();
+    }
+
+    function extendActiveLine(event) {
+      if (!activeLine) return;
+
+      const line = linesByLabel.get(activeLine.label);
+      if (!line || line.completed) {
+        finalizeActiveLine();
+        return;
+      }
+
+      const point = getBoardPoint(event);
+      const targetCell = getNearestCell(point);
+      if (!targetCell) {
+        finalizeActiveLine();
+        return;
+      }
+
+      const lastCell = line.cells[line.cells.length - 1];
+      if (targetCell.key === lastCell.key) return;
+      if (!cellsAreAdjacent(lastCell, targetCell)) return;
+
+      if (line.cells.length > 1) {
+        const previousCell = line.cells[line.cells.length - 2];
+        if (targetCell.key === previousCell.key) {
+          line.cells.pop();
+          line.points.pop();
+          line.completed = false;
+          drawLine(line.label);
+          renderDots();
+          updateWinState();
+          return;
+        }
+      }
+
+      const ownCellAlreadyUsed = line.cells.some((cell) => cell.key === targetCell.key);
+      if (ownCellAlreadyUsed) return;
+
+      const occupiedByOther = getOccupiedCellOwner(targetCell.key, line.label);
+      if (occupiedByOther !== null) return;
+
+      const hitDot = dotByCell.get(targetCell.key);
+      if (hitDot) {
+        // Pass-through dots can be visited but don't end the line
+        if (hitDot.isPassThrough && hitDot.label === line.label) {
+          line.cells.push(targetCell);
+          line.points.push(getCellCenter(targetCell.row, targetCell.col));
+          drawLine(line.label);
+          updateWinState();
+          return;
+        }
+        
+        // Regular endpoint logic
+        if (hitDot.label !== line.label || hitDot.id === line.startDotId) {
+          resetActiveLine();
+          return;
+        }
+
+        line.cells.push(targetCell);
+        line.points.push(getCellCenter(targetCell.row, targetCell.col));
+        line.completed = true;
+        drawLine(line.label);
+        finalizeActiveLine();
+        return;
+      }
+
+      line.cells.push(targetCell);
+      line.points.push(getCellCenter(targetCell.row, targetCell.col));
+      drawLine(line.label);
+      updateWinState();
+    }
+
+    function allPairsConnected() {
+      const labels = [...new Set(dotsData.map((dot) => dot.label))];
+      if (labels.length === 0) return false; // no dots loaded yet — never a win
+      return labels.every((label) => {
+        const line = linesByLabel.get(label);
+        return Boolean(line && line.completed);
+      });
+    }
+
+    function allPlayableCellsFilled() {
+      if (playable.size === 0) return false; // board not built yet — never a win
+      const occupied = new Set();
+      linesByLabel.forEach((line) => {
+        line.cells.forEach((cell) => occupied.add(cell.key));
+      });
+      return occupied.size === playable.size;
+    }
+
+    function updateWinState() {
+      const won = allPairsConnected() && allPlayableCellsFilled();
+      if (won && puzzleStartedAt && !finishedAt) {
+        finishedAt = Date.now();
+      }
+      winLayer.classList.toggle('visible', won);
+      winShareButton.disabled = !won;
+      if (won && puzzleStartedAt !== null && finishedAt !== null) {
+        stopTimerLoop();
+        const elapsedMs = getCompletedElapsedMs();
+        const elapsed = formatElapsed(elapsedMs);
+        winMessage.textContent = `Every pair is connected and the full board is filled in ${elapsed}.`;
+        statusText.textContent = `Solved in ${elapsed}.`;
+        saveCompletedResult(elapsedMs);
+        winShareButton.textContent = 'Copy Result';
+        winShareButton.classList.remove('copied');
+        if (!winLayer.dataset.celebrated) {
+          winLayer.dataset.celebrated = 'true';
+          celebrateWithConfetti();
+        }
+      } else {
+        winLayer.dataset.celebrated = '';
+        winMessage.textContent = 'Every pair is connected and the full board is filled.';
+      }
+      updateTimerDisplay();
+    }
+
+    buildBoard();
+    createDots();
+    refreshLayout();
+
+    const storedResult = loadCompletedResult();
+    if (storedResult) {
+      showStoredResult(storedResult);
+    } else {
+      ensureTimerStarted();
+      updateTimerDisplay();
+    }
+
+    startGameButton.addEventListener('click', closeInstructions);
+    howToButton.addEventListener('click', openInstructions);
+    eraseButton.addEventListener('click', resetBoardState);
+    seePuzzleButton.addEventListener('click', showPuzzleFromResults);
+    shareResultsButton.addEventListener('click', showResultsScreen);
+    winShareButton.addEventListener('click', copyShareText);
+
+    board.addEventListener('pointerdown', (e) => {
+      // Capture any pointerdown on the board so moves stay board-relative
+      try { board.setPointerCapture(e.pointerId); } catch(e2) {}
+    });
+    board.addEventListener('pointermove', extendActiveLine, { passive: false });
+    board.addEventListener('pointerup', finalizeActiveLine);
+    board.addEventListener('pointerleave', finalizeActiveLine);
+    board.addEventListener('pointercancel', finalizeActiveLine);
+    // Prevent page scroll while dragging on iOS
+    board.addEventListener('touchmove', (e) => { if (activeLine) e.preventDefault(); }, { passive: false });
+    window.addEventListener('resize', refreshLayout);
+  </script>
+</body>
+</html>
