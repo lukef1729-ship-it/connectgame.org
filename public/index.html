@@ -530,7 +530,7 @@
 <body>
   <main class="page">
     <h1>CONNECT</h1>
-    <p class="note">May 21, 2026</p>
+    <p class="note">May 22, 2026</p>
 
     <section class="board-shell">
       <div class="board" id="board" aria-label="Connect game board">
@@ -586,8 +586,8 @@
     const confettiCanvas = document.getElementById("confettiCanvas");
     const rows = 9;
     const cols = 9;
-    const puzzleDate = "2026-05-21";
-    const puzzleVersion = "2026-05-21-a";
+    const puzzleDate = "2026-05-22";
+    const puzzleVersion = "2026-05-22-a";
     const resultStorageKey = `connect-result-${puzzleVersion}`;
 
     // Diamond/cross shape — 9x9 grid
@@ -752,6 +752,8 @@
         if (!raw) return null;
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed.elapsedMs !== 'number') return null;
+        // Only load the result if it matches the current puzzle date
+        if (parsed.puzzleDate !== puzzleDate) return null;
         return parsed;
       } catch (error) {
         return null;
@@ -905,10 +907,10 @@
     function getShareText() {
       const elapsedMs = getCompletedElapsedMs();
       if (elapsedMs === null) return null;
-      const base = 'CONNECT - May 21, 2026';
+      const base = 'CONNECT - May 22, 2026';
       return `${base}
 Time: ${formatElapsed(elapsedMs)}
-Solved the May 21 puzzle.
+Solved the May 22 puzzle.
 https://connectgame.org`;
     }
 
@@ -1280,9 +1282,26 @@ https://connectgame.org`;
       updateTimerDisplay();
     }
 
+    // Clean up old puzzle results from localStorage
+    function cleanupOldResults() {
+      try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('connect-result-') && key !== resultStorageKey) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+      } catch (error) {
+        // Ignore cleanup failures
+      }
+    }
+
     buildBoard();
     createDots();
     refreshLayout();
+    cleanupOldResults();
 
     const storedResult = loadCompletedResult();
     if (storedResult) {
